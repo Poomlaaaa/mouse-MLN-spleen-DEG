@@ -1,7 +1,3 @@
-# mouse-MLN-spleen-DEG
-Differential gene expression analysis of mouse MLN vs spleen samples using edgeR, focusing on ER stress-related genes and GO enrichment.
-
-# MLN vs Spleen iNKT Cells – Differential Expression Analysis
 
 # Study Overview
 Gene expression comparison between **Mesenteric Lymph Node (MLN)** and **Spleen iNKT cells**.
