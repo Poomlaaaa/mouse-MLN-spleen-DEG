@@ -1,0 +1,245 @@
+---
+title: "mln_spleen_DE_analysis"
+author: "Pumla Bhekiwe Manyatsi"
+date: "2025-07-22"
+output: html_document
+---
+
+## 1. Setup
+
+```{r}
+rm(list = ls(all.names = TRUE))
+
+library(edgeR)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(dplyr)
+library(biomaRt)
+library(pheatmap)
+```
+
+## 2. Input Files (3 spleen, 3 MLN)
+
+```{r}
+file_list <- c(
+  "SRR27723122_ReadsPerGene.out.tab", # spleen
+  "SRR25987863_pass_ReadsPerGene.out.tab", # mln
+  "SRR27723123_ReadsPerGene.out.tab", # spleen
+  "SRR25987867_pass_ReadsPerGene.out.tab", # mln
+  "SRR27723124_ReadsPerGene.out.tab", # spleen
+  "SRR25987871_pass_ReadsPerGene.out.tab"  # mln
+)
+```
+
+## 3. Read STAR outputs and build count matrix
+
+```{r}
+read_counts <- function(file) {
+  df <- read.table(file, header = FALSE, stringsAsFactors = FALSE)
+  df <- df[grep("^ENS", df$V1), c(1, 2)]  # use column 2 (unstranded)
+  sample_name <- gsub("(_pass)?_ReadsPerGene\\.out\\.tab$", "", basename(file))
+  colnames(df) <- c("GeneID", sample_name)
+  return(df)
+}
+
+data_list <- lapply(file_list, read_counts)
+combined_counts <- Reduce(function(x, y) merge(x, y, by = "GeneID", all = TRUE), data_list)
+combined_counts[is.na(combined_counts)] <- 0
+
+count_data <- combined_counts[, -1]
+rownames(count_data) <- combined_counts$GeneID
+```
+
+## 4. edgeR Differential Expression
+
+```{r}
+condition <- factor(c("Spleen", "MLN", "Spleen", "MLN", "Spleen", "MLN"))
+condition <- relevel(condition, ref = "Spleen")
+
+dge <- DGEList(counts = count_data, group = condition)
+keep <- filterByExpr(dge)
+dge <- dge[keep, , keep.lib.sizes = FALSE]
+dge <- calcNormFactors(dge)
+logCPM <- cpm(dge, log = TRUE)
+
+design <- model.matrix(~ condition)
+dge <- estimateDisp(dge, design)
+fit <- glmQLFit(dge, design)
+qlf <- glmQLFTest(fit, coef = 2)  # coef=2 for conditionMLN
+```
+
+## 5. Save DEG Results
+
+```{r}
+deg_results <- topTags(qlf, n = Inf)$table
+write.csv(deg_results, "DEG_results_MLN_vs_Spleen_main.csv", row.names = TRUE)
+```
+
+## 5. Split DEGs
+
+```{r}
+up_in_MLN <- deg_results %>% filter(FDR < 0.05 & logFC > 0)
+down_in_MLN <- deg_results %>% filter(FDR < 0.05 & logFC < 0)
+
+write.csv(up_in_MLN, "Upregulated_in_MLN_main.csv")
+write.csv(down_in_MLN, "Downregulated_in_MLN_main.csv")
+write.csv(down_in_MLN, "Upregulated_in_Spleen_main.csv")
+write.csv(up_in_MLN, "Downregulated_in_Spleen_main.csv")
+```
+
+## 6. Annotation
+
+```{r}
+mart <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+annotate_genes <- function(df) {
+  df$clean_id <- sub("\\..*", "", rownames(df))
+  annotations <- getBM(
+    attributes = c("ensembl_gene_id", "entrezgene_id", "external_gene_name"),
+    filters = "ensembl_gene_id",
+    values = df$clean_id,
+    mart = mart
+  )
+  df$ensembl_gene_id <- df$clean_id
+  df$clean_id <- NULL
+  merge(df, annotations, by = "ensembl_gene_id", all.x = TRUE)
+}
+
+deg_annotated <- annotate_genes(deg_results)
+write.csv(deg_annotated, "DEG_results_MLN_vs_Spleen_annotated_main.csv", row.names = FALSE)
+
+
+# Your ER stress gene symbols
+er_stress_genes <- c("EIF2AK3", "Ern1", "Xbp1", "Atf4", "Ddit3", "Hspa5", "Herpud1", "Serp1",
+                     "Creb3l1", "Creb3l2", "Pdia2", "Pdia3", "Pdia4", "Pdia6", "P4hb","Wfs1", 
+                     "Stc2", "Sdf2l1", "Dnajc10", "Nr4a1", "Herp1","Bcl2", "Bak1", "Brsk2", 
+                     "Cebpb", "Rnasel", "Spop", "Trp53", "Atp2a1", "Casp3", "Casp9", "Itpr1", 
+                     "Trib3", "Ube2k", "Bcap31", "Cdk5rap3", "Eif2b5", "Qrich1", "Gorasp2", 
+                     "Nfe2l2", "Ppp2cb", "Tmem259", "Ubqln1", "Usp19", "Bbs10", "Crebrf",
+                     "Nhlrc1", "Os9", "Mbtps2", "Pik3r1", "Pla2g6", "Ppp1r15a", "Scamp5", 
+                     "Cep290", "Cert1", "Eif2s1", "Aff4", "Ddrgk1", "Flot1", "Bax", 
+                     "Bcl2l1", "Ddx3x", "Eif4g1", "Aqp11", "Aifm1")
+
+# Load your annotated DEGs
+deg_annotated <- read.csv("DEG_results_MLN_vs_Spleen_annotated_main.csv")  # or the correct annotated file
+
+# Filter: significantly upregulated in MLN
+up_MLN <- deg_annotated %>%
+  filter(FDR < 0.05 & logFC > 0 & external_gene_name %in% er_stress_genes)
+
+# Check how many ER stress genes are upregulated
+print(up_MLN$external_gene_name)
+
+# How many of the 65 ER stress genes are in the DEG results (regardless of significance)?
+sum(er_stress_genes %in% deg_annotated$external_gene_name)
+
+# Which ER stress genes are missing from the DEG-annotated list?
+setdiff(er_stress_genes, deg_annotated$external_gene_name)
+```
+
+## 7. GO Enrichment: Upregulated ER Stress Genes in MLN
+
+```{r}
+#Convert to Entrez IDs
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+# Convert gene symbols to Entrez
+entrez_up_MLN <- bitr(up_MLN$external_gene_name,
+                      fromType = "SYMBOL",
+                      toType = "ENTREZID",
+                      OrgDb = org.Mm.eg.db)
+
+# Vector of Entrez IDs
+gene_ids <- entrez_up_MLN$ENTREZID
+
+#GO Biological Process enrichment
+go_result <- enrichGO(gene = gene_ids,
+                      OrgDb = org.Mm.eg.db,
+                      ont = "BP",  # Biological Process
+                      pAdjustMethod = "BH",
+                      pvalueCutoff = 0.05)
+
+# View results
+head(go_result)
+
+#visualisation
+dotplot(go_result, showCategory = 15, title = "GO Enrichment: Upregulated ER Stress Genes in MLN")
+
+#excel files
+write.csv(as.data.frame(go_result), "GO_Enrichment_Upregulated_ER_MLN_main.csv", row.names = FALSE)
+
+```
+
+## 8. Filter Expression Matrix to ER Stress Genes
+
+```{r}
+# Clean Ensembl IDs in your logCPM matrix (remove version numbers)
+rownames(logCPM) <- sub("\\..*", "", rownames(logCPM))
+
+# Get the Ensembl IDs of ER stress genes present in your annotated DEG list
+custom_annotated <- deg_annotated %>%
+  filter(external_gene_name %in% er_stress_genes)
+
+custom_ids <- custom_annotated$ensembl_gene_id
+
+# Subset logCPM matrix to only include ER stress genes
+logCPM_custom <- logCPM[rownames(logCPM) %in% custom_ids, ]
+
+# Replace row names with readable gene symbols
+rownames(logCPM_custom) <- custom_annotated$external_gene_name[
+  match(rownames(logCPM_custom), custom_annotated$ensembl_gene_id)
+]
+
+group_means <- data.frame(
+  Gene = rownames(logCPM_custom),
+  Spleen = rowMeans(logCPM_custom[, condition == "Spleen"]),
+  MLN = rowMeans(logCPM_custom[, condition == "MLN"])
+)
+group_means$logFC_simple <- group_means$MLN - group_means$Spleen
+
+print(group_means[order(-group_means$logFC_simple), ])  # sort by up in MLN
+```
+
+## 9. Hetamap
+
+```{r}
+library(pheatmap)
+
+# 1. Get genes from your group_means table
+selected_genes <- group_means$Gene
+
+# 2. Subset logCPM to only those genes
+# Make sure logCPM rownames are gene symbols
+rownames(logCPM) <- deg_annotated$external_gene_name[
+  match(sub("\\..*", "", rownames(logCPM)), deg_annotated$ensembl_gene_id)
+]
+
+logCPM_subset <- logCPM[rownames(logCPM) %in% selected_genes, ]
+
+# 3. Create sample group annotations
+sample_groups <- data.frame(
+  Tissue = condition
+)
+rownames(sample_groups) <- colnames(logCPM_subset)
+
+# 4. Optional: sort samples by group
+ordered_samples <- rownames(sample_groups)[order(sample_groups$Tissue)]
+logCPM_subset <- logCPM_subset[, ordered_samples]
+sample_groups <- sample_groups[ordered_samples, , drop = FALSE]
+
+# 5. Heatmap color scheme
+annotation_colors <- list(Tissue = c(Spleen = "#A6CEE3", MLN = "#B2DF8A"))
+
+# 6. Plot heatmap
+pheatmap(logCPM_subset,
+         scale = "row",  # normalize each gene across samples
+         cluster_cols = FALSE,
+         cluster_rows = TRUE,
+         annotation_col = sample_groups,
+         annotation_colors = annotation_colors,
+         fontsize_row = 9,
+         fontsize_col = 9,
+         main = "ER Stress Genes (Spleen vs MLN, 6 Samples)",
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(100))
+```
