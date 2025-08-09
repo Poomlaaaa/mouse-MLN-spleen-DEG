@@ -6,15 +6,15 @@ The goal is to determine whether MLN iNKT cells exhibit a higher baseline stress
 ## Experimental Design
 - **Groups:** Naïve Spleen (control, treated as *healthy*) vs. Naïve MLN (treated as *unhealthy*).
 - **Biological question:** Identify genes that are upregulated or downregulated between MLN and spleen iNKT cells, and perform pathway enrichment analysis based on these findings.
-- **Data Source:** Publicly available RNA-seq datasets from the NCBI Gene Expression Omnibus (GEO) and Sequence Read Archive (SRA).
+- **Data source:** Publicly available RNA-seq datasets from the NCBI Gene Expression Omnibus (GEO) and Sequence Read Archive (SRA).
 - **Focus:** Stress-related, tissue-adapted, or regulatory gene expression differences under homeostatic (non-stimulated) conditions.
 
 ## Analysis Pipeline
 1. **Input:** STAR `ReadsPerGene` counts (from GEO/SRA data).
-2. **Differential Expression Analysis:** `edgeR`.
-3. **Gene Annotation:** via `biomaRt`.
+2. **Differential expression analysis:** `edgeR`.
+3. **Gene annotation:** via `biomaRt`.
 4. **Filtering:** Focus on ER stress-related genes.
-5. **Pathway Analysis:** GO enrichment using `clusterProfiler`.
+5. **Pathway analysis:** GO enrichment using `clusterProfiler`.
 6. **Visualization:** Heatmap of selected gene expression patterns.
 7. **Output:** CSV tables of DEGs, annotations, ER stress gene lists, and enrichment results.
 
