@@ -18,6 +18,24 @@ The goal is to determine whether MLN iNKT cells exhibit a higher baseline stress
 6. **Visualization:** Heatmap of selected gene expression patterns.
 7. **Output:** CSV tables of DEGs, annotations, ER stress gene lists, and enrichment results.
 
+## Additional Analysis: MLN TCR-Dependent IEG / ER-Stress Module
+
+As a continuation of the MLN vs Spleen analysis, a second script focuses on
+within-MLN differences between:
+
+- WT + PBS (baseline)
+- WT + αGalCer (TCR-stimulated)
+- CD1d-KO + PBS (negative control)
+
+Script: `mln_MLN_TCR_IEG_ERstress_analysis.R`
+
+This analysis:
+- Builds an MLN-only count matrix from STAR `ReadsPerGene` outputs.
+- Performs normalization and PCA (edgeR).
+- Annotates genes via Ensembl (`biomaRt`).
+- Examines immediate early genes (IEGs), Nur77 (Nr4a1), and selected ER stress genes.
+- Generates heatmaps comparing transcriptional activation states across WT_PBS, WT+αGalCer, and CD1d-KO+PBS MLN iNKT cells.
+
 ## Required R Packages
 
 ```r
